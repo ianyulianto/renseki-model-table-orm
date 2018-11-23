@@ -10,6 +10,7 @@ import com.renseki.orm.builder.column.BasicColumnBuilder;
 import com.renseki.orm.builder.column.FieldModelToSqlColumnBuilder;
 import com.renseki.orm.exception.ModelNotFoundException;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -17,12 +18,32 @@ import java.util.Map;
 public class ModelToSqlTableBuilder extends SqlTable.Builder {
 
     private final String modelName;
-    public ModelToSqlTableBuilder(String modelName) {
+    private final String database;
+    private final Connection connection;
+    public ModelToSqlTableBuilder(String modelName, String database, Connection connection) {
         this.modelName = modelName;
+        this.database = database;
+        this.connection = connection;
     }
 
     @Override
     public SqlTable build() {
+        SqlTable modelSqlTable = this.buildFromModel();
+
+        final SqlTable res;
+        if ( this.isTableExist(modelSqlTable.getTable(), connection) ) {
+            //  Jika Table sudah ada, dibandingkan & merge
+            SqlTable sqlTable = new SqlDbTableBuilder(database, modelSqlTable.getTable(), connection)
+                .build();
+            res = sqlTable.join(modelSqlTable);
+        }
+        else {
+            res = modelSqlTable;
+        }
+        return res;
+    }
+
+    private SqlTable buildFromModel() {
         Optional<AbstractModel> optModel = PoolCache.getModel(modelName);
         if ( !optModel.isPresent() ) {
             throw new ModelNotFoundException(modelName);
@@ -47,7 +68,7 @@ public class ModelToSqlTableBuilder extends SqlTable.Builder {
 
         //  Add Primary Key
         Column primaryId = new BasicColumnBuilder("id", "INT(11)")
-            .nullable(true)
+            .nullable(false)
             .primary(true)
             .mode(Column.Mode.NEW)
             .build();

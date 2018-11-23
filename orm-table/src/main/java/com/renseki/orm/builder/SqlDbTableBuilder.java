@@ -74,20 +74,6 @@ public class SqlDbTableBuilder extends SqlTable.Builder {
         return res;
     }
 
-    private boolean isTableExist(String table, Connection connection) {
-        final String query = "SELECT COUNT(1) FROM `" + table + "`";
-
-        boolean any = false;
-        try (
-            Statement st = connection.createStatement();
-            ResultSet ignored = st.executeQuery(query)
-        ) {
-            any = true;
-        } catch (SQLException ignored) { }
-
-        return any;
-    }
-
     @Override
     public SqlTable build() {
         this.exist = this.isTableExist(table, connection);

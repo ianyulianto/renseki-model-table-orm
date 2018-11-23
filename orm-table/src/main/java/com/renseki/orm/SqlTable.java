@@ -1,8 +1,13 @@
 package com.renseki.orm;
 
 import com.renseki.orm.builder.ConjoinSqlTableBuilder;
+import com.renseki.orm.builder.column.ExistingColumnBuilder;
 import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 
 public class SqlTable {
@@ -42,34 +47,55 @@ public class SqlTable {
         return constraints;
     }
 
-    public Optional<String> toSqlAlter() {
+    public Optional<String> toSqlAlterColumnModification() {
         final String res;
-        if ( !this.exist ) {
-            res = null;
-        }
-        else {
-            StringBuilder sb = new StringBuilder();
+        List<Column> columns = new ArrayList<>();
 
-            //  ALTER ADDITIONAL
-            for ( Column column : this.columns ) {
-                //  M2M Column - Pivot table
-                if ( column.getPivotTable() != null ) {
-                    SqlTable pivotTable = column.getPivotTable();
-
-                    sb.append(pivotTable.toSqlSchema().trim())
-                        .append("\n");
+        for ( Column column : this.columns ) {
+            if ( !this.exist ) {
+                final Column.Mode mode;
+                if ( column.getRelation() != null ) {
+                    mode = Column.Mode.UPDATE;
                 }
-                //  Common Column
                 else {
-                    sb.append(this.generateAlterSqlScript(column).trim())
+                    mode = Column.Mode.NOTHING;
+                }
+                columns.add(
+                    new ExistingColumnBuilder(column)
+                    .mode(mode)
+                    .build()
+                );
+            }
+            else {
+                columns.add(column);
+            }
+        }
+
+        //  ALTER ADDITIONAL
+        StringBuilder sb = new StringBuilder();
+        for ( Column column : columns ) {
+            //  M2M Column - Pivot table
+            if ( column.getPivotTable() != null ) {
+                SqlTable pivotTable = column.getPivotTable();
+
+                sb.append(pivotTable.toSqlSchema().trim())
+                    .append("\n");
+
+                Optional<String> optAlter = pivotTable.toSqlAlterColumnModification();
+                optAlter.ifPresent( str -> sb.append(str).append("\n") );
+            }
+            //  Common Column
+            else {
+                final String query = this.generateAlterSqlScript(column).trim();
+                if ( !query.isEmpty() ) {
+                    sb.append(query)
                         .append("\n");
                 }
             }
-
-            res = sb.toString().trim();
         }
 
-        return Optional.ofNullable(res);
+        res = sb.toString().trim();
+        return Optional.of(res);
     }
 
     public String toSqlSchema() {
@@ -174,20 +200,6 @@ public class SqlTable {
                 .append("), \n");
         }
 
-        //--    Foreign Key
-        for ( Column relationalColumn : this.getRelationalColumns() ) {
-            Relation relation = relationalColumn.getRelation();
-
-            String res = String.format("FOREIGN KEY %s(`%s`) REFERENCES %s(`%s`)",
-                relation.getName(),
-                relationalColumn.getName(),
-                relation.getTableRef(),
-                relation.getColRef());
-
-            sb.append(res)
-                .append(",\n");
-        }
-
         //--    Closing Query
         final String createQuery = sb.toString().trim();
         if ( createQuery.endsWith(",") ) {
@@ -222,6 +234,20 @@ public class SqlTable {
         protected String table;
         protected List<Column> columns = new ArrayList<>();
         protected Map<String, String> constraints = new HashMap<>();
+
+        public boolean isTableExist(String table, Connection connection) {
+            final String query = "SELECT COUNT(1) FROM `" + table + "`";
+
+            boolean any = false;
+            try (
+                Statement st = connection.createStatement();
+                ResultSet ignored = st.executeQuery(query)
+            ) {
+                any = true;
+            } catch (SQLException ignored) { }
+
+            return any;
+        }
 
         public abstract SqlTable build();
     }

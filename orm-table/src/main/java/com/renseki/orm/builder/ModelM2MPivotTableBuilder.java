@@ -34,9 +34,6 @@ public class ModelM2MPivotTableBuilder extends SqlTable.Builder {
         }
         AbstractModel targetModel_2 = optTargetModel_2.get();
 
-        //  Pivot Table Name
-        final String pivotTable = m2m.getRelName();
-
         //  ID
         Column id = new BasicColumnBuilder("id", "INT(11)")
             .nullable(false)
@@ -101,7 +98,7 @@ public class ModelM2MPivotTableBuilder extends SqlTable.Builder {
         Column sysCompanyId = new BasicColumnBuilder("sys_company_id", "INT(11)")
             .nullable(false)
             .mode(Column.Mode.NEW)
-            .relation(new Relation(companyRelKey, "sys_company_id", "res_company"))
+            .relation(new Relation(companyRelKey, "id", "res_company"))
             .build();
 
         Column active = new BasicColumnBuilder("active", "TINYINT(1)")
